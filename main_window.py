@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 import uuid
+import webbrowser
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
@@ -474,8 +475,11 @@ class MainFrame(wx.Frame):
         # -- 底部右侧 GitHub 开源链接 --
         footer = wx.BoxSizer(wx.HORIZONTAL)
         footer.AddStretchSpacer(1)
-        hlink = wx.HyperlinkCtrl(self.panel, -1, 'GitHub 开源项目（52pojie 出品）', GITHUB_URL)
-        footer.Add(hlink, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.lbl_gh_link = wx.StaticText(self.panel, label='GitHub 开源项目（52pojie 出品）')
+        self.lbl_gh_link.SetForegroundColour(wx.Colour(51, 122, 183))
+        self.lbl_gh_link.SetCursor(wx.Cursor(wx.CURSOR_HAND))
+        footer.Add(self.lbl_gh_link, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.lbl_gh_link.Bind(wx.EVT_LEFT_DOWN, self._on_open_github)
         root.Add(footer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # -- 状态栏 --（参照网页 tip，放在底部）
@@ -545,6 +549,9 @@ class MainFrame(wx.Frame):
 
     def _selected_model(self):
         return 'UVR_MDXNET_KARA_2' if self.radio_kara.GetValue() else 'UVR-MDX-NET-Inst_HQ_3'
+
+    def _on_open_github(self, e):
+        webbrowser.open(GITHUB_URL)
 
 
     def _on_start(self, e):
