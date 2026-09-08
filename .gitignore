@@ -1,0 +1,28 @@
+# ---- 打包产物 / 运行时 / 模型（大文件，走 Release 发布）----
+models/
+runtime/
+dist/
+build/
+dist_onedir/
+build_onedir/
+jobs/
+*.spec
+*.log
+
+# ---- 构建临时文件 ----
+__pycache__/
+*.pyc
+
+# ---- 备份与临时脚本 ----
+*.bak*
+_*test.py
+_make_ico.py
+# ---- web 版残留（另见 ktv-accompaniment-tool 仓库）----
+server.py
+server.py.bak*
+index.html
+index.html.bak*
+pick_dialog.py
+
+# ---- 本地发布 zip（走 GitHub Release）----
+release/
