@@ -19,8 +19,8 @@
 
 ## 使用
 
-1. 从 **Releases** 下载 `伴奏分离窗口版-v1.3.1.zip`（含 exe 与运行库，免安装）
-2. 解压后运行 `伴奏分离窗口版.exe`
+1. 从 **Releases** 下载 `伴奏分离和声版-v1.3.2.zip`（含 exe 与运行库，免安装）
+2. 解压后运行 `伴奏分离和声版.exe`
 3. 拖入或选择要处理的文件 → 选分轨模型 → 点 **开始处理**
 4. 在提示的目录中查看产物
 
@@ -43,7 +43,7 @@
 
 ```bash
 runtime\python.exe -m PyInstaller --noconfirm --onedir --windowed ^
-  --name "伴奏分离窗口版" --icon app_icon.ico ^
+  --name "伴奏分离和声版" --icon app_icon.ico ^
   --add-data "models\UVR-MDX-NET-Inst_HQ_3.onnx;models" ^
   --add-data "models\UVR_MDXNET_KARA_2.onnx;models" ^
   --add-data "runtime\ffmpeg.exe;runtime" ^
