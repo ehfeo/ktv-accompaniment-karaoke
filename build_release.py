@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-NAME = '伴奏分离窗口版'
+NAME = '伴奏分离和声版'
 ICON = 'app_icon.ico'
 DIST = 'dist_onedir'
 WORK = 'build_onedir'
