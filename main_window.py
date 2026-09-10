@@ -11,6 +11,7 @@ video_io(视频音轨提取与合并)。
 import os
 import shutil
 import sys
+import json
 import threading
 import time
 import uuid
@@ -27,7 +28,7 @@ import wav_io
 import video_io
 
 APP_NAME = '伴奏分离·和声版 52pojie出品'
-APP_VERSION = 'v1.3.1'
+APP_VERSION = 'v1.3.2'
 GITHUB_URL = 'https://github.com/ehfeo/ktv-accompaniment-karaoke'
 MODEL_NAME = 'UVR-MDX-NET-Inst_HQ_3'
 AUDIO_EXTS = {'.wav', '.mp3', '.flac', '.m4a', '.aac', '.ogg', '.opus',
@@ -63,6 +64,8 @@ def _icon_path():
             return p
     return None
 
+
+RESUME_FILE = os.path.join(APP_DIR, 'resume_queue.json')
 
 _JOBS_LOCK = threading.Lock()   # 串行化模型推理（CPU 单例）
 _separator = None
@@ -325,6 +328,7 @@ class MainFrame(wx.Frame):
         self._worker = None
         self._stop = False
         self._current = None
+        self._pause = False
         self._lock = threading.Lock()
 
         self._build_ui()
@@ -385,8 +389,9 @@ class MainFrame(wx.Frame):
         self.btn_start = wx.Button(self.panel, label='开始处理')
         self.btn_clear = wx.Button(self.panel, label='清空列表')
         self.btn_stop = wx.Button(self.panel, label='停止')
+        self.btn_pause = wx.Button(self.panel, label='暂停并保存进度')
         self.lbl_count = wx.StaticText(self.panel, label=' 0 项', style=wx.ST_NO_AUTORESIZE)
-        for b in (btn_add_files, btn_add_dir, self.btn_start, self.btn_clear, self.btn_stop):
+        for b in (btn_add_files, btn_add_dir, self.btn_start, self.btn_clear, self.btn_stop, self.btn_pause):
             top.Add(b, 0, wx.RIGHT, 8)
         top.Add(self.lbl_count, 0, wx.ALIGN_CENTER_VERTICAL)
         root.Add(top, 0, wx.ALL & ~wx.BOTTOM, 10)
@@ -498,6 +503,7 @@ class MainFrame(wx.Frame):
         self.btn_start.Bind(wx.EVT_BUTTON, self._on_start)
         self.btn_clear.Bind(wx.EVT_BUTTON, self._on_clear)
         self.btn_stop.Bind(wx.EVT_BUTTON, self._on_stop)
+        self.btn_pause.Bind(wx.EVT_BUTTON, self._on_pause)
         self.btn_preview_voc.Bind(wx.EVT_BUTTON, lambda e: self._preview('voc'))
         self.btn_preview_inst.Bind(wx.EVT_BUTTON, lambda e: self._preview('inst'))
         self.btn_preview_origfmt.Bind(wx.EVT_BUTTON, lambda e: self._preview('origfmt'))
@@ -582,9 +588,86 @@ class MainFrame(wx.Frame):
         self._refresh_grid()
         self._update_preview_buttons()
 
+    def _on_pause(self, e=None):
+        if not (self._worker and self._worker.is_alive()):
+            self.lbl_note.SetLabel(' 当前没有任务在处理')
+            return
+        self._pause = True
+        self.btn_pause.Disable()
+        self.lbl_note.SetLabel(' 已请求暂停：处理完当前任务后保存进度，可直接关闭软件')
+        self.status.SetStatusText('处理完当前任务后暂停……')
+
+    def _remove_resume(self):
+        try:
+            if os.path.exists(RESUME_FILE):
+                os.remove(RESUME_FILE)
+        except OSError:
+            pass
+
+    def _save_resume_queue(self, include_processing=False):
+        with self._lock:
+            pend = [t for t in self.tasks
+                    if t.status == 'queued' or (include_processing and t.status == 'processing')]
+        if not pend:
+            self._remove_resume()
+            return
+        payload = {
+            'model': self._selected_model(),
+            'video_mode': 'replace' if self.radio_replace.GetValue() else 'add_track',
+            'tasks': [{'path': t.src_path} for t in pend],
+        }
+        try:
+            with open(RESUME_FILE, 'w', encoding='utf-8') as f:
+                json.dump(payload, f, ensure_ascii=False)
+        except OSError:
+            pass
+
+    def _load_resume(self):
+        if not os.path.exists(RESUME_FILE):
+            return None
+        try:
+            with open(RESUME_FILE, 'r', encoding='utf-8') as f:
+                payload = json.load(f)
+        except (OSError, ValueError):
+            return None
+        tasks = [Task(it['path']) for it in payload.get('tasks', [])
+                 if it.get('path') and os.path.exists(it['path'])]
+        if not tasks:
+            return None
+        return tasks, payload.get('model'), payload.get('video_mode')
+
+    def _maybe_resume(self):
+        got = self._load_resume()
+        if got is None:
+            return
+        tasks, model, video_mode = got
+        r = wx.MessageBox('检测到 %d 个未完成的任务，是否继续上次的处理？' % len(tasks),
+                          '断点续传', wx.YES_NO | wx.ICON_QUESTION)
+        if r != wx.YES:
+            self._remove_resume()
+            return
+        self.tasks[:] = tasks
+        if model == 'UVR_MDXNET_KARA_2':
+            self.radio_kara.SetValue(True)
+            self.radio_clean.SetValue(False)
+        else:
+            self.radio_clean.SetValue(True)
+            self.radio_kara.SetValue(False)
+        if video_mode == 'replace':
+            self.radio_replace.SetValue(True)
+            self.radio_add.SetValue(False)
+        else:
+            self.radio_add.SetValue(True)
+            self.radio_replace.SetValue(False)
+        self._refresh_grid()
+        self.lbl_note.SetLabel(' 已载入上次 %d 个未完成任务，点「开始处理」继续' % len(tasks))
+
     # ---------- 工作线程 ----------
     def _work_loop(self):
         while not self._stop:
+            if self._pause:
+                self._save_resume_queue()
+                break
             with self._lock:
                 task = next((t for t in self.tasks if t.status == 'queued'), None)
             if task is None:
@@ -635,6 +718,13 @@ class MainFrame(wx.Frame):
     def _on_all_done(self):
         self.btn_start.Enable()
         self.btn_clear.Enable()
+        if self._pause:
+            self.btn_pause.Enable()
+            self._pause = False
+            self.lbl_note.SetLabel(' 已暂停并保存进度：可直接关闭软件，下次打开点「开始处理」继续')
+            self.status.SetStatusText('已暂停，进度已保存')
+            return
+        self._remove_resume()
         self.lbl_note.SetLabel(' 全部任务已结束。可以预览或再次选择新文件。')
         self.status.SetStatusText('完成')
         # 自动关机：仅当勾选且用户未主动点击“停止”时才触发
@@ -736,6 +826,7 @@ class MainFrame(wx.Frame):
 
     def _on_close(self, e):
         self._stop = True
+        self._save_resume_queue(include_processing=True)
         try:
             if self._worker and self._worker.is_alive():
                 self._worker.join(timeout=2)
@@ -748,6 +839,7 @@ class App(wx.App):
     def OnInit(self):
         frame = MainFrame()
         self.SetTopWindow(frame)
+        frame._maybe_resume()
         return True
 
 
